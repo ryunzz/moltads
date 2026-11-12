@@ -98,3 +98,18 @@
   - Trade-off: verbose markup and repetition.
   - Alternative: generated component helper, not needed for MVP.
 **If you want to change this:** modify the corresponding component files under `dashboard/app/components`, hooks in `dashboard/app/hooks`, and types in `dashboard/app/lib/types.ts`.
+
+## Step 8: One-Command Onboarding Join Flow
+**Status:** ✅ Complete
+**What was built:** Server-side onboarding contract (`GET /api/join`, `GET /api/join/bootstrap`) plus updated onboarding docs (`moltads_onboard.md`) and README instructions for OpenCLAWD operators.
+**Design decisions:**
+- Added a server route that returns cluster join metadata and a copyable bootstrap command so onboarding can be shareable from a single link.
+  - Trade-off: command requires operator local repo path or `MOLTADS_REPO_PATH` env var.
+  - Alternative: auto-clone/release distribution, which would add packaging logic and auth for artifact access.
+- Implemented bootstrap script as plain bash to keep the worker startup path identical to existing sidecar behavior.
+  - Trade-off: script assumes a POSIX shell with `bash`; no progress feedback if dependencies are missing.
+  - Alternative: npm package/CLI wrapper, which would require extra publish lifecycle and versioning.
+- Kept registration unchanged (`/api/workers/register`) to preserve existing non-DB protocol and avoid changing worker/server core contracts.
+  - Trade-off: no invite-level auth on register in this MVP.
+  - Alternative: optional token/allowlist layer that only touches `/routes/join.js`, `worker/index.js`, and `moltads_onboard.md`.
+**If you want to change this:** modify `server/routes/join.js` and onboarding docs (`moltads_onboard.md`, `README.md`).

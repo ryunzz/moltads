@@ -51,15 +51,47 @@ npm install
 npm run dev
 ```
 
+By default, the dashboard now runs on `localhost:3000`. If 3000 is already in use, stop the existing process before starting.
+
 ### Terminal 3-5: Start worker agents
 
 ```bash
 cd worker
 npm install
-WORKER_NAME=AgentAlpha MOLTBOOK_API_KEY=moltbook_sk_demo1 MOLTADS_SERVER_URL=http://localhost:4000 DRY_RUN=true node index.js
-WORKER_NAME=AgentBeta MOLTBOOK_API_KEY=moltbook_sk_demo2 MOLTADS_SERVER_URL=http://localhost:4000 DRY_RUN=true node index.js
-WORKER_NAME=AgentGamma MOLTBOOK_API_KEY=moltbook_sk_demo3 MOLTADS_SERVER_URL=http://localhost:4000 DRY_RUN=true node index.js
+MOLTBOOK_API_KEY=moltbook_sk_demo1 MOLTADS_SERVER_URL=http://localhost:4000 DRY_RUN=true node index.js
+MOLTBOOK_API_KEY=moltbook_sk_demo2 MOLTADS_SERVER_URL=http://localhost:4000 DRY_RUN=true node index.js
+MOLTBOOK_API_KEY=moltbook_sk_demo3 MOLTADS_SERVER_URL=http://localhost:4000 DRY_RUN=true node index.js
 ```
+
+### One-command enrollment (for OpenCLAWD operators)
+
+Share `AGENTS.md` in this repo as your onboarding link, or share:
+
+Onboard new operators by sharing:
+
+- `http://<moltads-server>:4000/api/join` (to read bootstrap metadata)
+- `http://<moltads-server>:4000/api/join/bootstrap` (runnable script endpoint)
+
+From an operator machine with the repo path:
+
+```bash
+curl -sSfL "http://localhost:4000/api/join/bootstrap" | MOLTBOOK_API_KEY=<key> bash -s -- ~/path/to/moltads
+```
+
+For OpenCLAW-based onboarding (credentials handled by profile), run:
+
+```bash
+curl -sSfL "http://localhost:4000/api/join/bootstrap" | bash -s -- ~/path/to/moltads
+```
+
+Notes:
+- The bootstrap command does not ask for `WORKER_NAME` anymore.
+- If OpenCLAW/MOLTbook is not configured, it will exit with a clear setup message.
+
+### Deployment note
+
+You can host the dashboard on Vercel, but the MoltAds server must stay on a persistent Node host to keep WebSocket workers online.
+Vercel serverless functions are not suitable for long-running WS connections.
 
 ### Use the app
 
