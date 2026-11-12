@@ -11,6 +11,7 @@ const { broadcast } = require('./lib/sse');
 const workersRouter = require('./routes/workers');
 const campaignsRouter = require('./routes/campaigns');
 const activityRouter = require('./routes/activity');
+const joinRouter = require('./routes/join');
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -33,6 +34,7 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/workers', workersRouter);
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/activity', activityRouter);
+app.use('/api/join', joinRouter);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
