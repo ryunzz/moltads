@@ -2,15 +2,36 @@ const express = require('express');
 
 const router = express.Router();
 
+const HOST_PATTERN = /^[a-zA-Z0-9.-]+(:\d{1,5})?$/;
+const URL_PATTERN = /^https?:\/\/[a-zA-Z0-9.-]+(:\d{1,5})?$/;
+
+// The server URL is embedded in a shell script that operators pipe into bash,
+// so it must never contain shell metacharacters. Prefer a configured canonical
+// URL; fall back to the request Host only if it passes strict validation.
+const resolveServerUrl = (req) => {
+  const configured = (process.env.PUBLIC_SERVER_URL || '').trim().replace(/\/+$/, '');
+  if (configured) {
+    return URL_PATTERN.test(configured) ? configured : null;
+  }
+  const host = req.get('host') || '';
+  if (!HOST_PATTERN.test(host)) return null;
+  const protocol = req.protocol === 'https' ? 'https' : 'http';
+  return `${protocol}://${host}`;
+};
+
+const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
+
 const renderJoinScript = ({ serverUrl, defaultDryRun = 'true' }) => {
   const lines = [
     '#!/usr/bin/env bash',
     'set -euo pipefail',
     '',
-    'SERVER_URL="${MOLTADS_SERVER_URL:-' + serverUrl + '}"',
+    'SERVER_URL="${MOLTADS_SERVER_URL:-}"',
+    'if [ -z "${SERVER_URL}" ]; then SERVER_URL=' + shellQuote(serverUrl) + '; fi',
     'REPO_PATH="${1:-${MOLTADS_REPO_PATH:-$(pwd)}}"',
     'WORKER_NAME="${WORKER_NAME:-${OPENCLAW_WORKER_NAME:-${OPENCLAW_AGENT_NAME:-${OPENCLAW_USER:-${USER:-agent}}}}}"',
-    'DRY_RUN="${DRY_RUN:-' + defaultDryRun + '}"',
+    'DRY_RUN="${DRY_RUN:-}"',
+    'if [ -z "${DRY_RUN}" ]; then DRY_RUN=' + shellQuote(defaultDryRun) + '; fi',
     'MOLTBOOK_API_KEY="${MOLTBOOK_API_KEY:-${MOLTBOOK_TOKEN:-${MOLTBOOK_ACCESS_TOKEN:-}}}"',
     '',
     'if [ -z "${SERVER_URL}" ]; then',
@@ -72,10 +93,11 @@ const renderJoinScript = ({ serverUrl, defaultDryRun = 'true' }) => {
   return lines.join('\n');
 };
 
-router.get('/', (_req, res) => {
-  const protocol = _req.protocol === 'https' ? 'https' : 'http';
-  const host = _req.get('host');
-  const serverUrl = `${protocol}://${host}`;
+router.get('/', (req, res) => {
+  const serverUrl = resolveServerUrl(req);
+  if (!serverUrl) {
+    return res.status(400).json({ error: 'Invalid server host. Set PUBLIC_SERVER_URL on the MoltAds server.' });
+  }
   const bootstrapUrl = `${serverUrl}/api/join/bootstrap`;
 
   res.json({
@@ -90,18 +112,22 @@ router.get('/', (_req, res) => {
 });
 
 router.get('/bootstrap', (req, res) => {
-  const protocol = req.protocol === 'https' ? 'https' : 'http';
-  const host = req.get('host');
-  const serverUrl = `${protocol}://${host}`;
-
+  const serverUrl = resolveServerUrl(req);
+  res.set('Cache-Control', 'no-store, private');
+  res.set('Vary', 'Host');
   res.type('text/plain');
-  res.set('Cache-Control', 'no-cache');
+  if (!serverUrl) {
+    return res.status(400).send('echo "[MoltAds Join] Invalid server host. Set PUBLIC_SERVER_URL on the MoltAds server." >&2; exit 1\n');
+  }
+
   res.send(
     renderJoinScript({
       serverUrl,
-      defaultDryRun: process.env.DRY_RUN || 'true',
+      defaultDryRun: process.env.DRY_RUN === 'false' ? 'false' : 'true',
     }),
   );
 });
 
 module.exports = router;
+module.exports.resolveServerUrl = resolveServerUrl;
+module.exports.renderJoinScript = renderJoinScript;
