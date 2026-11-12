@@ -1,6 +1,7 @@
 require('dotenv').config();
 const WebSocket = require('ws');
 const { MoltbookClient } = require('./moltbook-client');
+const { randomBytes } = require('crypto');
 
 const args = (() => {
   const normalized = {};
@@ -28,9 +29,41 @@ const args = (() => {
 })();
 
 const MOLTADS_SERVER_URL = args.serverUrl || process.env.MOLTADS_SERVER_URL || 'http://localhost:4000';
-const WORKER_NAME = args.workerName || process.env.WORKER_NAME || 'MoltAdsWorker';
-const MOLTBOOK_API_KEY = args.apiKey || process.env.MOLTBOOK_API_KEY || '';
 const DRY_RUN = String(args.dryRun || process.env.DRY_RUN || 'true') === 'true';
+
+const sanitizeWorkerName = (rawName) => {
+  const safe = (rawName || 'agent').toString().trim().toLowerCase();
+  return safe
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/--+/g, '-')
+    .slice(0, 28);
+};
+
+const randomWorkerSuffix = () => {
+  return randomBytes(3).toString('hex');
+};
+
+const deriveWorkerName = () => {
+  const candidates = [
+    args.workerName,
+    process.env.WORKER_NAME,
+    process.env.OPENCLAW_WORKER_NAME,
+    process.env.OPENCLAW_AGENT_NAME,
+    process.env.OPENCLAW_NAME,
+    process.env.OPENCLAW_USER,
+    process.env.USER,
+    process.env.USERNAME,
+  ];
+
+  const found = candidates.find((value) => typeof value === 'string' && value.trim().length > 0);
+  const base = sanitizeWorkerName(found || 'agent');
+  return `${base}-${randomWorkerSuffix()}`;
+};
+
+const isValidMoltbookApiKey = (value) => /^moltbook_|^moltdev_/i.test(String(value || ''));
+const WORKER_NAME = deriveWorkerName();
+const MOLTBOOK_API_KEY = args.apiKey || process.env.MOLTBOOK_API_KEY || process.env.MOLTBOOK_TOKEN || process.env.MOLTBOOK_ACCESS_TOKEN || '';
 
 const templates = [
   'This is a really interesting perspective on {topic}. I have been thinking about this more deeply recently.',
@@ -62,6 +95,21 @@ const templates = [
 
 const templateCache = new Map();
 
+const toDisplayHandle = (rawName = 'moltads_agent') => {
+  const base = String(rawName || 'moltads_agent')
+    .replace(/^u\//i, '')
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .slice(0, 28);
+
+  return `u/${base || 'moltads_agent'}`;
+};
+
+const redditStyleComment = (workerName, content) => {
+  const handle = toDisplayHandle(workerName);
+  return `${handle}\n•\n4d ago\n${content}`;
+};
+
 const randomTemplateFor = (postId, context = {}) => {
   const key = `${postId}`;
   const used = templateCache.get(key) || new Set();
@@ -84,14 +132,22 @@ const randomTemplateFor = (postId, context = {}) => {
 
 const createPostComment = (task) => {
   const context = task.context || {};
-  return randomTemplateFor(task.post_id, {
+  const message = randomTemplateFor(task.post_id, {
     title: context.title,
     submolt: context.submolt,
   });
+
+  return redditStyleComment(WORKER_NAME, message);
 };
 
 if (!MOLTBOOK_API_KEY) {
-  console.error('[MoltAds Worker] MOLTBOOK_API_KEY is required');
+  console.error('[MoltAds Worker] MOLTBOOK_API_KEY is required.');
+  console.error('[MoltAds Worker] OpenCLAW must be linked to MOLTbook before running this worker.');
+  process.exit(1);
+}
+
+if (!isValidMoltbookApiKey(MOLTBOOK_API_KEY)) {
+  console.error('[MoltAds Worker] MOLTBOOK_API_KEY must start with moltbook_ or moltdev_.');
   process.exit(1);
 }
 
